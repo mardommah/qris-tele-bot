@@ -15,6 +15,8 @@ def init_db():
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             name TEXT NOT NULL,
             qris_static TEXT NOT NULL,
+            qris_image_path TEXT,
+            owner_telegram_id INTEGER NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -47,17 +49,18 @@ def init_db():
     conn.commit()
     conn.close()
 
-def add_merchant(name: str, qris_static: str):
+def add_merchant(name: str, qris_static: str, owner_telegram_id: int, qris_image_path: str = None):
     """Tambah merchant baru"""
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT INTO merchants (name, qris_static) VALUES (?, ?)
-    ''', (name, qris_static))
+        INSERT INTO merchants (name, qris_static, qris_image_path, owner_telegram_id) VALUES (?, ?, ?, ?)
+    ''', (name, qris_static, qris_image_path, owner_telegram_id))
     merchant_id = cursor.lastrowid
     conn.commit()
     conn.close()
     return merchant_id
+
 
 def get_merchants():
     """Dapatkan semua merchant"""
@@ -67,6 +70,59 @@ def get_merchants():
     merchants = cursor.fetchall()
     conn.close()
     return merchants
+
+def get_merchant_by_id(merchant_id: int):
+    """Dapatkan merchant berdasarkan ID"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM merchants WHERE id = ?', (merchant_id,))
+    merchant = cursor.fetchone()
+    conn.close()
+    return merchant
+
+def get_merchant_by_owner(owner_telegram_id: int):
+    """Dapatkan semua merchant milik user"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM merchants WHERE owner_telegram_id = ?', (owner_telegram_id,))
+    merchants = cursor.fetchall()
+    conn.close()
+    return merchants
+
+
+def get_user_merchants(user_telegram_id: int):
+   """Dapatkan merchant berdasarkan owner Telegram ID"""
+   conn = sqlite3.connect(DATABASE_PATH)
+   cursor = conn.cursor()
+   cursor.execute('SELECT * FROM merchants WHERE owner_telegram_id = ?', (user_telegram_id,))
+   merchant = cursor.fetchone()
+   conn.close()
+   return merchant
+
+def get_merchant_by_owner(owner_telegram_id: int):
+    """Dapatkan merchant berdasarkan owner Telegram ID"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM merchants WHERE owner_telegram_id = ?', (owner_telegram_id,))
+    merchant = cursor.fetchone()
+    conn.close()
+    return merchant
+
+
+def update_merchant_qris(merchant_id: int, qris_static: str, qris_image_path: str = None):
+    """Update QRIS merchant"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    if qris_image_path:
+        cursor.execute('''
+            UPDATE merchants SET qris_static = ?, qris_image_path = ? WHERE id = ?
+        ''', (qris_static, qris_image_path, merchant_id))
+    else:
+        cursor.execute('''
+            UPDATE merchants SET qris_static = ? WHERE id = ?
+        ''', (qris_static, merchant_id))
+    conn.commit()
+    conn.close()
 
 def add_transaction(user_id: int, merchant_id: int, amount: str, service_fee: str = "0", qris_dynamic: str = None):
     """Tambah transaksi baru"""

@@ -1,7 +1,7 @@
 # handlers/user.py
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes, ConversationHandler
-from database import get_user_transactions, get_default_merchant, add_transaction
+from database import get_user_transactions, get_default_merchant, add_transaction, get_merchant_by_owner
 from qris_generator import generate_dynamic_qris, create_qr_code
 
 # State definitions
@@ -25,6 +25,15 @@ Fitur yang tersedia:
 
 Silakan pilih menu di bawah ini:
 """
+
+    merchant = get_merchant_by_owner(update.effective_user.id)
+    if not merchant:
+        await update.message.reply_text(
+            "❌ Anda belum memiliki merchant. Hubungi admin untuk setup merchant.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+
     
     await update.message.reply_text(
         welcome_text,
@@ -105,16 +114,27 @@ async def generate_qris_final(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("❌ Terjadi kesalahan. Silakan coba lagi.")
         return ConversationHandler.END
     
-    # Dapatkan merchant default
-    merchant = get_default_merchant()
+    merchant = get_merchant_by_owner(update.effective_user.id)
     if not merchant:
         await update.message.reply_text(
-            "❌ Belum ada merchant yang terdaftar. Hubungi admin untuk setup merchant.",
+            "❌ Anda tidak memiliki merchant. Hubungi admin untuk setup merchant.",
             reply_markup=ReplyKeyboardRemove()
         )
         return ConversationHandler.END
     
-    merchant_id, merchant_name, qris_static, _ = merchant
+     # Validasi struktur data merchant
+    if len(merchant[0]) < 3:
+        await update.message.reply_text(
+            "❌ Data merchant tidak lengkap. Hubungi admin.",
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    # Ekstrak data merchant dengan benar
+    # Struktur: (id, name, qris_static, qris_image_path, owner_telegram_id, created_at)
+    merchant_id = merchant[0][0]
+    merchant_name = merchant[0][1]
+    qris_static = merchant[0][2]
     
     try:
         # Generate QRIS dinamis

@@ -42,18 +42,34 @@ def main():
     application.add_handler(CommandHandler("admin", admin_start))
     
     # Conversation handler untuk tambah merchant
+    # main.py (bagian handlers)
+# Conversation handler untuk tambah merchant
     add_merchant_conv = ConversationHandler(
         entry_points=[CommandHandler("add_merchant", add_merchant_start)],
         states={
             MERCHANT_NAME_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, merchant_name_input)],
-            MERCHANT_QRIS_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, merchant_qris_input)]
+            MERCHANT_IMAGE_INPUT: [MessageHandler(filters.PHOTO, merchant_image_input)],
+            MERCHANT_CONFIRMATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, merchant_confirmation_input)]
         },
         fallbacks=[CommandHandler("cancel", cancel)]
     )
     
+    # Conversation handler untuk tambah merchant untuk user lain
+    add_merchant_for_user_conv = ConversationHandler(
+        entry_points=[CommandHandler("add_merchant_for_user", add_merchant_for_user_start)],
+        states={
+            MERCHANT_USER_ID_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, merchant_user_id_input)],
+            MERCHANT_NAME_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, merchant_name_input)],
+            MERCHANT_IMAGE_INPUT: [MessageHandler(filters.PHOTO, merchant_image_input)],
+            MERCHANT_CONFIRMATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, merchant_confirmation_input)]
+        },
+        fallbacks=[CommandHandler("cancel", cancel)]
+    )
+
+
     # Conversation handler untuk tambah admin
     add_admin_conv = ConversationHandler(
-        entry_points=[CommandHandler("add_admin", add_admin_start)],
+        entry_points=[CommandHandler("add_admin", admin_start)],
         states={
             1: [MessageHandler(filters.TEXT & ~filters.COMMAND, admin_user_id_input)]
         },
@@ -70,6 +86,7 @@ def main():
     )
     
     application.add_handler(add_merchant_conv)
+    application.add_handler(add_merchant_for_user_conv)
     application.add_handler(CommandHandler("list_merchants", list_merchants))
     application.add_handler(add_admin_conv)
     application.add_handler(broadcast_conv)

@@ -1,11 +1,15 @@
 # handlers/admin.py
+import os
 from telegram import Update
 from telegram.ext import ContextTypes, ConversationHandler
-from database import add_merchant, get_merchants, add_admin, is_admin
+from database import add_merchant, get_merchants, add_admin, is_admin, get_user_merchants
 from config import ADMIN_USER_ID
+from utils.qris_reader import read_qris_from_bytes
+from telegram import ReplyKeyboardRemove
+
 
 # State definitions
-MERCHANT_NAME_INPUT, MERCHANT_QRIS_INPUT = range(2)
+MERCHANT_NAME_INPUT, MERCHANT_IMAGE_INPUT, MERCHANT_CONFIRMATION, MERCHANT_USER_ID_INPUT = range(4)
 
 async def admin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Menu Admin"""
@@ -13,7 +17,13 @@ async def admin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     
     # Cek apakah user adalah admin
     if user_id != ADMIN_USER_ID and not is_admin(user_id):
-        await update.message.reply_text("❌ Akses ditolak. Anda bukan admin.")
+        merchants = get_user_merchants(user_id)
+        if merchants:
+            merchant_list = "\n".join([f"🏪 {m[1]} (ID: {m[0]})" for m in merchants])
+            await update.message.reply_text(f"👋 Halo! Berikut adalah merchant Anda:\n\n{merchant_list}\n\nGunakan command /start untuk kembali ke menu utama.")
+            return
+        else:
+            await update.message.reply_text("📭 Anda belum memiliki merchant. Hubungi admin untuk setup")
         return
     
     admin_text = """
@@ -21,6 +31,7 @@ async def admin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 🔧 *Fitur Admin:*
 • /add_merchant - Tambah merchant QRIS
+- /add_merchant_for_user - Tambah merchant untuk user lain
 • /list_merchants - Lihat semua merchant
 • /add_admin - Tambah admin baru
 • /broadcast - Kirim pesan ke semua user
@@ -38,33 +49,158 @@ async def add_merchant_start(update: Update, context: ContextTypes.DEFAULT_TYPE)
         await update.message.reply_text("❌ Akses ditolak.")
         return ConversationHandler.END
     
+    existing_merchant = get_user_merchants(user_id)
+    if existing_merchant and user_id != ADMIN_USER_ID and not is_admin(user_id):
+        await update.message.reply_text("❌ Anda sudah memiliki merchant. Hubungi admin jika ingin menambahkan merchant baru.")
+        return ConversationHandler.END
+        
     await update.message.reply_text("Masukkan nama merchant:")
     return MERCHANT_NAME_INPUT
+
+async def add_merchant_for_user_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Mulai tambah merchant untuk user lain"""
+    user_id = update.effective_user.id
+    
+    if user_id != ADMIN_USER_ID and not is_admin(user_id):
+        await update.message.reply_text("❌ Akses ditolak.")
+        return ConversationHandler.END
+    
+    await update.message.reply_text("Masukkan User ID Telegram user yang akan didaftarkan:")
+    return MERCHANT_USER_ID_INPUT
+
+
+async def merchant_user_id_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Input User ID user yang akan didapat merchant"""
+    try:
+        target_user_id = int(update.message.text.strip())
+        context.user_data['target_user_id'] = target_user_id
+        
+        # Cek apakah user sudah punya merchant
+        existing_merchant = get_user_merchants(target_user_id)
+        if existing_merchant:
+            await update.message.reply_text(f"❌ User ID {target_user_id} sudah memiliki merchant.")
+            return ConversationHandler.END
+        
+        await update.message.reply_text("Masukkan nama merchant untuk user tersebut:")
+        return MERCHANT_NAME_INPUT
+        
+    except ValueError:
+        await update.message.reply_text("❌ User ID tidak valid. Masukkan angka User ID Telegram:")
+        return MERCHANT_USER_ID_INPUT
+
 
 async def merchant_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Input nama merchant"""
     name = update.message.text.strip()
+    if not name:
+        await update.message.reply_text("❌ Nama merchant tidak boleh kosong. Silakan masukkan nama merchant:")
+        return MERCHANT_NAME_INPUT
+    
     context.user_data['merchant_name'] = name
     
-    await update.message.reply_text("Masukkan QRIS statis merchant:")
-    return MERCHANT_QRIS_INPUT
+    await update.message.reply_text("Silakan upload gambar QRIS merchant:")
+    return MERCHANT_IMAGE_INPUT
 
-async def merchant_qris_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Input QRIS statis merchant"""
-    qris_static = update.message.text.strip()
-    name = context.user_data.get('merchant_name')
-    
-    if not name or not qris_static:
-        await update.message.reply_text("❌ Data tidak lengkap.")
-        return ConversationHandler.END
-    
+
+async def merchant_image_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Input gambar QRIS merchant"""
     try:
-        merchant_id = add_merchant(name, qris_static)
-        await update.message.reply_text(f"✅ Merchant '{name}' berhasil ditambahkan dengan ID: {merchant_id}")
+         # Cek apakah pesan mengandung photo
+        if not update.message.photo:
+            await update.message.reply_text("❌ Silakan upload gambar QRIS merchant:")
+            return MERCHANT_IMAGE_INPUT
+        # Dapatkan file photo
+        photo = update.message.photo[-1]  # Ambil kualitas tertinggi
+        file = await photo.get_file()
+        
+        # Buat folder jika belum ada
+        os.makedirs('static/qris_images', exist_ok=True)
+        
+        # Simpan file
+        file_path = f"static/qris_images/merchant_{update.effective_user.id}_{photo.file_id}.jpg"
+        await file.download_to_drive(file_path)
+        
+        # Baca QRIS dari gambar
+        with open(file_path, 'rb') as f:
+            image_bytes = f.read()
+        
+        qris_data = read_qris_from_bytes(image_bytes)
+         # Validasi QRIS data
+        if not qris_data or len(qris_data) < 10:
+            await update.message.reply_text("❌ QRIS tidak valid. Silakan upload gambar QRIS yang jelas dan benar:")
+            # Hapus file yang tidak valid
+            if os.path.exists(file_path):
+                os.remove(file_path)
+            return MERCHANT_IMAGE_INPUT
+        
+        # Simpan ke context
+        context.user_data['merchant_qris'] = qris_data
+        context.user_data['merchant_image_path'] = file_path
+        
+        # Konfirmasi data
+        confirmation_text = f"""
+✅ QRIS berhasil dibaca!
+
+🏪 Nama Merchant: {context.user_data['merchant_name']}
+🧾 QRIS Data: {qris_data[:100]}...
+
+Apakah data ini sudah benar? (Ya/Tidak)
+"""
+        
+        await update.message.reply_text(confirmation_text)
+        return MERCHANT_QRIS_INPUT
+        
     except Exception as e:
-        await update.message.reply_text(f"❌ Gagal menambahkan merchant: {str(e)}")
+        await update.message.reply_text(f"❌ Gagal membaca QRIS: {str(e)}\n\nSilakan upload gambar QRIS yang jelas.")
+        return MERCHANT_IMAGE_INPUT
+
+
+async def merchant_confirmation_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Konfirmasi data merchant"""
+    user_response = update.message.text.strip().lower()
     
-    return ConversationHandler.END
+    if user_response == 'ya' or user_response == 'y':
+        try:
+            # Tentukan owner Telegram ID
+            target_user_id = context.user_data.get('target_user_id', update.effective_user.id)
+
+            # Simpan merchant ke database
+            merchant_id = add_merchant(
+                name=context.user_data['merchant_name'],
+                qris_static=context.user_data['merchant_qris'],
+                owner_telegram_id=target_user_id,
+                qris_image_path=context.user_data['merchant_image_path']
+            )
+            
+            success_text = f"""
+✅ Merchant berhasil ditambahkan!
+
+🆔 ID Merchant: {merchant_id}
+🏪 Nama: {context.user_data['merchant_name']}
+🧾 QRIS: {context.user_data['merchant_qris'][:50]}...
+
+Merchant siap digunakan untuk generate QRIS dinamis.
+"""
+            
+            await update.message.reply_text(success_text, reply_markup=ReplyKeyboardRemove())
+            
+            # Bersihkan context
+            context.user_data.clear()
+            
+            return ConversationHandler.END
+            
+        except Exception as e:
+            await update.message.reply_text(f"❌ Gagal menyimpan merchant: {str(e)}")
+            return ConversationHandler.END
+            
+    elif user_response == 'tidak' or user_response == 't':
+        await update.message.reply_text("❌ Silakan upload ulang gambar QRIS yang benar.")
+        return MERCHANT_IMAGE_INPUT
+    else:
+        await update.message.reply_text("❌ Pilihan tidak valid. Jawab 'Ya' atau 'Tidak'.")
+        return MERCHANT_QRIS_INPUT
+
+
 
 async def list_merchants(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """List semua merchant"""
@@ -87,7 +223,9 @@ async def list_merchants(update: Update, context: ContextTypes.DEFAULT_TYPE):
 🆔 ID: {merchant[0]}
 🏪 Nama: {merchant[1]}
 🧾 QRIS Statis: {merchant[2][:50]}...
-🕐 Tanggal: {merchant[3]}
+📸 Gambar: {'✅ Ada' if merchant[3] else '❌ Tidak Ada'}
+👤 Owner: {merchant[4]}
+🕐 Tanggal: {merchant[5]}
 
 {'-' * 30}
 """
