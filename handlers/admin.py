@@ -9,7 +9,7 @@ from telegram import ReplyKeyboardRemove
 
 
 # State definitions
-MERCHANT_NAME_INPUT, MERCHANT_IMAGE_INPUT, MERCHANT_CONFIRMATION, MERCHANT_USER_ID_INPUT = range(4)
+MERCHANT_USERNAME_INPUT, MERCHANT_NAME_INPUT, MERCHANT_IMAGE_INPUT, MERCHANT_CONFIRMATION = range(4)
 
 async def admin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Menu Admin"""
@@ -66,7 +66,7 @@ async def add_merchant_for_user_start(update: Update, context: ContextTypes.DEFA
         return ConversationHandler.END
     
     await update.message.reply_text("Masukkan User ID Telegram user yang akan didaftarkan:")
-    return MERCHANT_USER_ID_INPUT
+    return MERCHANT_USERNAME_INPUT
 
 
 async def merchant_user_id_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -86,7 +86,7 @@ async def merchant_user_id_input(update: Update, context: ContextTypes.DEFAULT_T
         
     except ValueError:
         await update.message.reply_text("❌ User ID tidak valid. Masukkan angka User ID Telegram:")
-        return MERCHANT_USER_ID_INPUT
+        return MERCHANT_USERNAME_INPUT
 
 
 async def merchant_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -148,7 +148,7 @@ Apakah data ini sudah benar? (Ya/Tidak)
 """
         
         await update.message.reply_text(confirmation_text)
-        return MERCHANT_QRIS_INPUT
+        return MERCHANT_CONFIRMATION
         
     except Exception as e:
         await update.message.reply_text(f"❌ Gagal membaca QRIS: {str(e)}\n\nSilakan upload gambar QRIS yang jelas.")

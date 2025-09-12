@@ -121,20 +121,20 @@ async def generate_qris_final(update: Update, context: ContextTypes.DEFAULT_TYPE
             reply_markup=ReplyKeyboardRemove()
         )
         return ConversationHandler.END
-    
+    # print(merchant)
      # Validasi struktur data merchant
-    if len(merchant[0]) < 3:
-        await update.message.reply_text(
-            "❌ Data merchant tidak lengkap. Hubungi admin.",
-            reply_markup=ReplyKeyboardRemove()
-        )
-        return ConversationHandler.END
+    # if len(merchant[0]) < 3:
+    #     await update.message.reply_text(
+    #         "❌ Data merchant tidak lengkap. Hubungi admin.",
+    #         reply_markup=ReplyKeyboardRemove()
+    #     )
+    #     return ConversationHandler.END
     
     # Ekstrak data merchant dengan benar
     # Struktur: (id, name, qris_static, qris_image_path, owner_telegram_id, created_at)
-    merchant_id = merchant[0][0]
-    merchant_name = merchant[0][1]
-    qris_static = merchant[0][2]
+    merchant_id = merchant[0]
+    merchant_name = merchant[1]
+    qris_static = merchant[2]
     
     try:
         # Generate QRIS dinamis

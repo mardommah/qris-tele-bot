@@ -58,7 +58,7 @@ def main():
     add_merchant_for_user_conv = ConversationHandler(
         entry_points=[CommandHandler("add_merchant_for_user", add_merchant_for_user_start)],
         states={
-            MERCHANT_USER_ID_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, merchant_user_id_input)],
+            MERCHANT_USERNAME_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, merchant_user_id_input)],
             MERCHANT_NAME_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, merchant_name_input)],
             MERCHANT_IMAGE_INPUT: [MessageHandler(filters.PHOTO, merchant_image_input)],
             MERCHANT_CONFIRMATION: [MessageHandler(filters.TEXT & ~filters.COMMAND, merchant_confirmation_input)]
