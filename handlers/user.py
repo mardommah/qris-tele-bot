@@ -1,14 +1,14 @@
-# handlers/user.py
+# handlersuser.py
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes, ConversationHandler
 from database import get_user_transactions, get_default_merchant, add_transaction, get_merchant_by_owner
 from qris_generator import generate_dynamic_qris, create_qr_code
 
 # State definitions
-AMOUNT_INPUT, SERVICE_FEE_INPUT = range(2)
+AMOUNT_INPUT, SERVICE_FEE_INPUT, STOP = range(3)
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Handler untuk /start"""
+    """Handler untuk start"""
     keyboard = [
         ['Generate QRIS', 'Riwayat Transaksi'],
         ['Bantuan']
@@ -43,15 +43,27 @@ Silakan pilih menu di bawah ini:
 
 async def generate_qris_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Menu Generate QRIS"""
+    # Create keyboard with stop button
+    keyboard = [['Stop']]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+    
     await update.message.reply_text(
         "Masukkan nominal pembayaran (contoh: 10000):",
-        reply_markup=ReplyKeyboardRemove()
+        reply_markup=reply_markup
     )
     return AMOUNT_INPUT
 
 async def amount_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Input nominal pembayaran"""
     amount = update.message.text.strip()
+    
+    # Cek jika user menekan tombol Stop
+    if amount == "Stop":
+        await update.message.reply_text(
+            '⏹️ Proses Generate QRIS telah dihentikan.',
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
     
     # Validasi amount
     try:
@@ -79,9 +91,13 @@ async def service_fee_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_response = update.message.text.strip().lower()
     
     if user_response == 'ya':
+        # Create keyboard with stop button
+        keyboard = [['Stop']]
+        reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True, one_time_keyboard=True)
+        
         await update.message.reply_text(
             "Masukkan biaya layanan (contoh: 500):",
-            reply_markup=ReplyKeyboardRemove()
+            reply_markup=reply_markup
         )
         return SERVICE_FEE_INPUT
     elif user_response == 'tidak':
@@ -93,18 +109,32 @@ async def service_fee_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def service_fee_amount_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Input jumlah biaya layanan"""
-    service_fee = update.message.text.strip()
+    user_input = update.message.text.strip()
+    
+    # Cek jika user menekan tombol Stop
+    if user_input == "Stop":
+        await update.message.reply_text(
+            '⏹️ Proses Generate QRIS telah dihentikan.',
+            reply_markup=ReplyKeyboardRemove()
+        )
+        return ConversationHandler.END
+    
+    # Cek jika user mengklik tombol Generate QRIS Lagi atau Menu Utama
+    if user_input == "Generate QRIS Lagi":
+        return await generate_qris_menu(update, context)
+    elif user_input == "Menu Utama":
+        return await start(update, context)
     
     # Validasi service fee
     try:
-        service_fee_int = int(service_fee)
+        service_fee_int = int(user_input)
         if service_fee_int < 0:
             raise ValueError("Service fee tidak boleh negatif")
     except ValueError:
         await update.message.reply_text("❌ Biaya layanan tidak valid. Masukkan angka.")
         return SERVICE_FEE_INPUT
     
-    return await generate_qris_final(update, context, service_fee)
+    return await generate_qris_final(update, context, user_input)
 
 async def generate_qris_final(update: Update, context: ContextTypes.DEFAULT_TYPE, service_fee: str):
     """Generate QRIS final dan kirim ke user"""
@@ -136,6 +166,10 @@ async def generate_qris_final(update: Update, context: ContextTypes.DEFAULT_TYPE
     merchant_name = merchant[1]
     qris_static = merchant[2]
     
+    # Create back button keyboard
+    keyboard = [['Generate QRIS Lagi', 'Menu Utama']]
+    reply_markup = ReplyKeyboardMarkup(keyboard, resize_keyboard=True)
+    
     try:
         # Generate QRIS dinamis
         qris_dynamic = generate_dynamic_qris(qris_static, amount, service_fee, merchant_id)
@@ -143,6 +177,7 @@ async def generate_qris_final(update: Update, context: ContextTypes.DEFAULT_TYPE
         # Simpan transaksi
         transaction_id = add_transaction(
             user_id=update.effective_user.id,
+            chat_id=update.effective_chat.id,
             merchant_id=merchant_id,
             amount=amount,
             service_fee=service_fee,
@@ -164,21 +199,18 @@ async def generate_qris_final(update: Update, context: ContextTypes.DEFAULT_TYPE
 Silakan scan QR Code di atas untuk melakukan pembayaran.
 ID Transaksi: {transaction_id}
 """
-        
         await update.message.reply_photo(
             photo=qr_image,
             caption=caption,
             parse_mode='Markdown',
-            reply_markup=ReplyKeyboardRemove()
+            reply_markup=reply_markup
         )
-        
     except Exception as e:
         await update.message.reply_text(
-            f"❌ Terjadi kesalahan saat generate QRIS: {str(e)}",
+            f"❌ Terjadi kesalahan saat Generate QRIS: {e}",
             reply_markup=ReplyKeyboardRemove()
         )
-    
-    return ConversationHandler.END
+        return ConversationHandler.END
 
 async def history_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Menu Riwayat Transaksi"""
@@ -191,14 +223,13 @@ async def history_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
     
-    history_text = "*📋 RIWAYAT TRANSAKSI*\n\n"
+    history_text = "*📋 RIWAYAT TRANSAKSI*nn"
     
     for transaction in transactions[:10]:  # Batasi 10 transaksi terakhir
-        _, user_id, merchant_id, amount, service_fee, _, status, created_at, merchant_name = transaction
+        _, user_id, chat_id, merchant_id, amount, service_fee, qris_dynamic, status, created_at, merchant_name = transaction
         
-        history_text += f"""
-🆔 ID: {transaction[0]}
-🏪 Merchant: {merchant_name or 'N/A'}
+        history_text += f"""🆔 ID: {transaction[0]}
+🏪 Merchant: {merchant_name or 'NA'}
 💰 Nominal: Rp {int(amount):,}
 💳 Biaya: Rp {int(service_fee):,}
 📊 Total: Rp {int(amount) + int(service_fee):,}
@@ -231,7 +262,7 @@ async def help_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 ❓ *Bantuan:*
 • Hubungi admin jika ada masalah
-• Pastikan nominal dalam rupiah tanpa titik/koma
+• Pastikan nominal dalam rupiah tanpa titikkoma
 
 🛠 *Fitur Admin:*
 • Setup merchant QRIS
@@ -244,6 +275,14 @@ async def help_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
         parse_mode='Markdown',
         reply_markup=ReplyKeyboardRemove()
     )
+
+async def stop(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Stop QR generation flow"""
+    await update.message.reply_text(
+        '⏹️ Proses Generate QRIS telah dihentikan.',
+        reply_markup=ReplyKeyboardRemove()
+    )
+    return ConversationHandler.END
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Cancel conversation"""

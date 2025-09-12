@@ -26,6 +26,7 @@ def init_db():
         CREATE TABLE IF NOT EXISTS transactions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             user_id INTEGER NOT NULL,
+            chat_id INTEGER NOT NULL,
             merchant_id INTEGER,
             amount TEXT NOT NULL,
             service_fee TEXT DEFAULT '0',
@@ -89,7 +90,6 @@ def get_merchant_by_owner(owner_telegram_id: int):
     conn.close()
     return merchants
 
-
 def get_user_merchants(user_telegram_id: int):
    """Dapatkan merchant berdasarkan owner Telegram ID"""
    conn = sqlite3.connect(DATABASE_PATH)
@@ -108,7 +108,6 @@ def get_merchant_by_owner(owner_telegram_id: int):
     conn.close()
     return merchant
 
-
 def update_merchant_qris(merchant_id: int, qris_static: str, qris_image_path: str = None):
     """Update QRIS merchant"""
     conn = sqlite3.connect(DATABASE_PATH)
@@ -124,14 +123,14 @@ def update_merchant_qris(merchant_id: int, qris_static: str, qris_image_path: st
     conn.commit()
     conn.close()
 
-def add_transaction(user_id: int, merchant_id: int, amount: str, service_fee: str = "0", qris_dynamic: str = None):
+def add_transaction(user_id: int, chat_id: int, merchant_id: int, amount: str, service_fee: str = "0", qris_dynamic: str = None):
     """Tambah transaksi baru"""
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT INTO transactions (user_id, merchant_id, amount, service_fee, qris_dynamic)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (user_id, merchant_id, amount, service_fee, qris_dynamic))
+        INSERT INTO transactions (user_id, chat_id, merchant_id, amount, service_fee, qris_dynamic)
+        VALUES (?, ?, ?, ?, ?, ?)
+    ''', (user_id, chat_id, merchant_id, amount, service_fee, qris_dynamic))
     transaction_id = cursor.lastrowid
     conn.commit()
     conn.close()
@@ -158,6 +157,20 @@ def get_transaction_by_id(transaction_id: int):
     cursor = conn.cursor()
     cursor.execute('''
         SELECT * FROM transactions WHERE id = ?
+    ''', (transaction_id,))
+    transaction = cursor.fetchone()
+    conn.close()
+    return transaction
+
+def get_transaction_with_merchant(transaction_id: int):
+    """Dapatkan transaksi dengan detail merchant"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT t.*, m.name as merchant_name 
+        FROM transactions t 
+        LEFT JOIN merchants m ON t.merchant_id = m.id 
+        WHERE t.id = ?
     ''', (transaction_id,))
     transaction = cursor.fetchone()
     conn.close()

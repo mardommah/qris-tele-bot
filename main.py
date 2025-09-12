@@ -24,8 +24,12 @@ def main():
     generate_qris_conv = ConversationHandler(
         entry_points=[MessageHandler(filters.Regex('^Generate QRIS$'), generate_qris_menu)],
         states={
-            AMOUNT_INPUT: [MessageHandler(filters.TEXT & ~filters.COMMAND, amount_input)],
+            AMOUNT_INPUT: [
+                MessageHandler(filters.Regex('^Stop$'), stop),
+                MessageHandler(filters.TEXT & ~filters.COMMAND, amount_input)
+            ],
             SERVICE_FEE_INPUT: [
+                MessageHandler(filters.Regex('^Stop$'), stop),
                 MessageHandler(filters.Regex('^(Ya|Tidak)$'), service_fee_input),
                 MessageHandler(filters.TEXT & ~filters.COMMAND, service_fee_amount_input)
             ]
@@ -42,8 +46,6 @@ def main():
     application.add_handler(CommandHandler("admin", admin_start))
     
     # Conversation handler untuk tambah merchant
-    # main.py (bagian handlers)
-# Conversation handler untuk tambah merchant
     add_merchant_conv = ConversationHandler(
         entry_points=[CommandHandler("add_merchant", add_merchant_start)],
         states={
@@ -65,7 +67,6 @@ def main():
         },
         fallbacks=[CommandHandler("cancel", cancel)]
     )
-
 
     # Conversation handler untuk tambah admin
     add_admin_conv = ConversationHandler(

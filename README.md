@@ -7,6 +7,7 @@ A Telegram bot for generating dynamic QRIS (Quick Response Code Indonesian Stand
 ### User Features
 - 🏦 **Generate QRIS**: Create dynamic QRIS codes with custom amounts and service fees
 - 📋 **Transaction History**: View all your past transactions
+- 🔔 **Payment Notifications**: Receive instant notifications when payments are processed
 - ℹ️ **Help**: Get assistance with using the bot
 
 ### Admin Features
@@ -91,6 +92,74 @@ python main.py
 
 The bot will start and display "🤖 QRIS Payment Bot is running..."
 
+## Running Tests
+
+To run the tests, you'll need to install the testing dependencies:
+
+```bash
+pip install pytest pytest-asyncio
+```
+
+Then run the tests:
+
+```bash
+# Run all tests
+python -m pytest
+
+# Run a specific test file
+python -m pytest test_bot.py
+
+# Run tests with verbose output
+python -m pytest -v
+```
+
+## Resource Monitoring
+
+To monitor the resource usage (RAM & CPU) of your bot:
+
+### Using the built-in monitoring script:
+```bash
+# Get system overview only
+python monitor_bot.py --overview
+
+# Continuous monitoring (updates every 5 seconds)
+python monitor_bot.py
+
+# Custom update interval (e.g., every 2 seconds)
+python monitor_bot.py --interval 2
+```
+
+### Using system tools:
+```bash
+# Real-time monitoring with top
+top -p $(pgrep -f python)
+
+# Monitor specific processes
+ps aux | grep python
+
+# System-wide resource usage
+vmstat 5
+```
+
+## Payment Notifications
+
+The bot now supports automatic payment notifications when users complete transactions:
+
+1. **Webhook Server**: A separate webhook server receives payment notifications from payment gateways
+2. **Automatic Status Updates**: Transaction statuses are automatically updated in the database
+3. **User Notifications**: Users receive instant notifications when their payments are processed
+
+To run the webhook server:
+```bash
+python webhook_server.py
+```
+
+The webhook server will start on port 5000 and listen for payment notifications at `/webhook/payment`.
+
+For testing purposes, you can manually trigger payment notifications using the `/webhook <transaction_id> <status>` command in Telegram.
+
+For detailed instructions on integrating with payment gateways, see [PAYMENT_INTEGRATION.md](PAYMENT_INTEGRATION.md).
+
 ## How It Works
 
 1. **QRIS Generation**:
@@ -103,12 +172,19 @@ The bot will start and display "🤖 QRIS Payment Bot is running..."
    - Users can view their transaction history
    - Admins can monitor all transactions
 
+3. **Payment Notifications**:
+   - When a user scans and pays the QRIS code, the payment gateway sends a webhook notification
+   - The webhook server receives the notification and updates the transaction status
+   - Users receive instant notifications about their payment status via Telegram
+
 ## Database Structure
 
 The bot uses SQLite with three main tables:
 - `merchants`: Store merchant information and static QRIS codes
 - `transactions`: Track all payment transactions
 - `admins`: Manage administrator accounts
+
+The `transactions` table has been updated to include a `chat_id` column for sending payment notifications to users.
 
 ## Security
 
