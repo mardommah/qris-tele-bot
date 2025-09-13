@@ -1,7 +1,7 @@
 # handlers/user.py
 from telegram import Update, ReplyKeyboardMarkup, ReplyKeyboardRemove
 from telegram.ext import ContextTypes, ConversationHandler
-from database import get_user_transactions, get_default_merchant, add_transaction, get_merchant_by_owner
+from database import get_user_transactions, get_default_merchant, add_transaction, get_merchant_by_owner, get_active_merchant_by_owner
 from qris_generator import generate_dynamic_qris, create_qr_code
 
 # State definitions
@@ -26,10 +26,10 @@ Fitur yang tersedia:
 Silakan pilih menu di bawah ini:
 """
 
-    merchant = get_merchant_by_owner(update.effective_user.id)
+    merchant = get_active_merchant_by_owner(update.effective_user.id)
     if not merchant:
         await update.message.reply_text(
-            "❌ Anda belum memiliki merchant. Hubungi admin untuk setup merchant.",
+            "❌ Anda belum memiliki merchant aktif. Hubungi admin untuk setup merchant atau aktifkan subscription Anda.",
             reply_markup=ReplyKeyboardRemove()
         )
         return ConversationHandler.END
@@ -114,10 +114,10 @@ async def generate_qris_final(update: Update, context: ContextTypes.DEFAULT_TYPE
         await update.message.reply_text("❌ Terjadi kesalahan. Silakan coba lagi.")
         return ConversationHandler.END
     
-    merchant = get_merchant_by_owner(update.effective_user.id)
+    merchant = get_active_merchant_by_owner(update.effective_user.id)
     if not merchant:
         await update.message.reply_text(
-            "❌ Anda tidak memiliki merchant. Hubungi admin untuk setup merchant.",
+            "❌ Anda tidak memiliki merchant aktif. Hubungi admin untuk setup merchant atau aktifkan subscription Anda.",
             reply_markup=ReplyKeyboardRemove()
         )
         return ConversationHandler.END
@@ -131,7 +131,7 @@ async def generate_qris_final(update: Update, context: ContextTypes.DEFAULT_TYPE
     #     return ConversationHandler.END
     
     # Ekstrak data merchant dengan benar
-    # Struktur: (id, name, qris_static, qris_image_path, owner_telegram_id, created_at)
+    # Struktur: (id, name, qris_static, qris_image_path, owner_telegram_id, is_active, created_at)
     merchant_id = merchant[0]
     merchant_name = merchant[1]
     qris_static = merchant[2]

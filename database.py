@@ -17,6 +17,7 @@ def init_db():
             qris_static TEXT NOT NULL,
             qris_image_path TEXT,
             owner_telegram_id INTEGER NOT NULL,
+            is_active BOOLEAN DEFAULT 1,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -30,7 +31,7 @@ def init_db():
             amount TEXT NOT NULL,
             service_fee TEXT DEFAULT '0',
             qris_dynamic TEXT,
-            status TEXT DEFAULT 'pending',
+            status TEXT DEFAULT 'success',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (merchant_id) REFERENCES merchants (id)
         )
@@ -49,13 +50,13 @@ def init_db():
     conn.commit()
     conn.close()
 
-def add_merchant(name: str, qris_static: str, owner_telegram_id: int, qris_image_path: str = None):
+def add_merchant(name: str, qris_static: str, owner_telegram_id: int, qris_image_path: str = None, is_active: bool = True):
     """Tambah merchant baru"""
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
     cursor.execute('''
-        INSERT INTO merchants (name, qris_static, qris_image_path, owner_telegram_id) VALUES (?, ?, ?, ?)
-    ''', (name, qris_static, qris_image_path, owner_telegram_id))
+        INSERT INTO merchants (name, qris_static, qris_image_path, owner_telegram_id, is_active) VALUES (?, ?, ?, ?, ?)
+    ''', (name, qris_static, qris_image_path, owner_telegram_id, is_active))
     merchant_id = cursor.lastrowid
     conn.commit()
     conn.close()
@@ -172,6 +173,25 @@ def update_transaction_status(transaction_id: int, status: str):
     ''', (status, transaction_id))
     conn.commit()
     conn.close()
+
+def toggle_merchant_status(merchant_id: int, is_active: bool):
+    """Toggle status aktif merchant"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE merchants SET is_active = ? WHERE id = ?
+    ''', (is_active, merchant_id))
+    conn.commit()
+    conn.close()
+
+def get_active_merchant_by_owner(owner_telegram_id: int):
+    """Dapatkan merchant aktif berdasarkan owner Telegram ID"""
+    conn = sqlite3.connect(DATABASE_PATH)
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM merchants WHERE owner_telegram_id = ? AND is_active = 1', (owner_telegram_id,))
+    merchant = cursor.fetchone()
+    conn.close()
+    return merchant
 
 def add_admin(user_id: int, username: str = None):
     """Tambah admin"""

@@ -2,7 +2,7 @@
 import os
 from telegram import Update
 from telegram.ext import ContextTypes, ConversationHandler
-from database import add_merchant, get_merchants, add_admin, is_admin, get_user_merchants
+from database import add_merchant, get_merchants, add_admin, is_admin, get_user_merchants, toggle_merchant_status, get_merchant_by_id
 from config import ADMIN_USER_ID
 from utils.qris_reader import read_qris_from_bytes
 from telegram import ReplyKeyboardRemove
@@ -33,6 +33,7 @@ async def admin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 • /add_merchant - Tambah merchant QRIS
 - /add_merchant_for_user - Tambah merchant untuk user lain
 • /list_merchants - Lihat semua merchant
+• /toggle_merchant - Aktifkan/Nonaktifkan merchant
 • /add_admin - Tambah admin baru
 • /broadcast - Kirim pesan ke semua user
 
@@ -169,7 +170,8 @@ async def merchant_confirmation_input(update: Update, context: ContextTypes.DEFA
                 name=context.user_data['merchant_name'],
                 qris_static=context.user_data['merchant_qris'],
                 owner_telegram_id=target_user_id,
-                qris_image_path=context.user_data['merchant_image_path']
+                qris_image_path=context.user_data['merchant_image_path'],
+                is_active=True  # Default subscription status is active
             )
             
             success_text = f"""
@@ -219,12 +221,14 @@ async def list_merchants(update: Update, context: ContextTypes.DEFAULT_TYPE):
     merchants_text = "*🏪 DAFTAR MERCHANT*\n\n"
     
     for merchant in merchants:
+        is_active = "✅ Aktif" if (len(merchant) > 6 and merchant[6]) else "❌ Nonaktif"
         merchants_text += f"""
 🆔 ID: {merchant[0]}
 🏪 Nama: {merchant[1]}
 🧾 QRIS Statis: {merchant[2][:50]}...
 📸 Gambar: {'✅ Ada' if merchant[3] else '❌ Tidak Ada'}
 👤 Owner: {merchant[4]}
+📊 Status: {is_active}
 🕐 Tanggal: {merchant[5]}
 
 {'-' * 30}
@@ -279,5 +283,43 @@ async def broadcast_message_input(update: Update, context: ContextTypes.DEFAULT_
     # Untuk sementara, kita hanya menampilkan pesan
     
     await update.message.reply_text(f"📢 Pesan broadcast:\n\n{message}\n\n(Fitur broadcast akan diimplementasikan)")
+    
+    return ConversationHandler.END
+
+async def toggle_merchant_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Toggle status merchant"""
+    user_id = update.effective_user.id
+    
+    if user_id != ADMIN_USER_ID and not is_admin(user_id):
+        await update.message.reply_text("❌ Akses ditolak.")
+        return
+    
+    await update.message.reply_text("Masukkan ID merchant yang akan di-toggle statusnya:")
+    return 1  # State untuk input merchant ID
+
+async def toggle_merchant_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Input merchant ID untuk toggle status"""
+    try:
+        merchant_id = int(update.message.text.strip())
+        
+        # Dapatkan merchant
+        merchant = get_merchant_by_id(merchant_id)
+        if not merchant:
+            await update.message.reply_text("❌ Merchant dengan ID tersebut tidak ditemukan.")
+            return ConversationHandler.END
+        
+        # Toggle status
+        current_status = bool(merchant[6]) if len(merchant) > 6 else True  # Default to True if not found
+        new_status = not current_status
+        
+        toggle_merchant_status(merchant_id, new_status)
+        
+        status_text = "aktif" if new_status else "nonaktif"
+        await update.message.reply_text(f"✅ Status merchant '{merchant[1]}' berhasil diubah menjadi {status_text}.")
+        
+    except ValueError:
+        await update.message.reply_text("❌ ID merchant tidak valid.")
+    except Exception as e:
+        await update.message.reply_text(f"❌ Gagal toggle status merchant: {str(e)}")
     
     return ConversationHandler.END

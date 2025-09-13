@@ -1,0 +1,13 @@
+[Unit]
+Description=QRIS Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/root/qris-tele-bot
+ExecStart=/root/qris-tele-bot/env/bin/python main.py
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

@@ -2,6 +2,7 @@
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler
 from handlers.user import *
 from handlers.admin import *
+from handlers.admin import toggle_merchant_start, toggle_merchant_input
 from handlers.payment import *
 from database import init_db
 from config import TELEGRAM_BOT_TOKEN
@@ -88,6 +89,17 @@ def main():
     application.add_handler(add_merchant_conv)
     application.add_handler(add_merchant_for_user_conv)
     application.add_handler(CommandHandler("list_merchants", list_merchants))
+    
+    # Conversation handler untuk toggle merchant status
+    toggle_merchant_conv = ConversationHandler(
+        entry_points=[CommandHandler("toggle_merchant", toggle_merchant_start)],
+        states={
+            1: [MessageHandler(filters.TEXT & ~filters.COMMAND, toggle_merchant_input)]
+        },
+        fallbacks=[CommandHandler("cancel", cancel)]
+    )
+    
+    application.add_handler(toggle_merchant_conv)
     application.add_handler(add_admin_conv)
     application.add_handler(broadcast_conv)
     
