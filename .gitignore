@@ -2,3 +2,5 @@
 *.db
 __pycache__/
 static/*
+.pytest_cache/
+logs/*

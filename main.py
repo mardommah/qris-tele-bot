@@ -1,17 +1,26 @@
 # main.py
+import signal
+import sys
+import os
 from telegram.ext import Application, CommandHandler, MessageHandler, filters, ConversationHandler
+from telegram.request import HTTPXRequest
 from handlers.user import *
 from handlers.admin import *
 from handlers.payment import *
 from database import init_db
 from config import TELEGRAM_BOT_TOKEN
 
-def main():
+# Set environment variable to explicitly use asyncio
+os.environ['TELEGRAM_BOT_ASYNC_LIB'] = 'asyncio'
+
+def setup_bot():
+    """Setup and return the bot application"""
     # Inisialisasi database
     init_db()
     
-    # Buat aplikasi bot
-    application = Application.builder().token(TELEGRAM_BOT_TOKEN).build()
+    # Buat aplikasi bot dengan explicit HTTP backend
+    request = HTTPXRequest()
+    application = Application.builder().token(TELEGRAM_BOT_TOKEN).request(request).build()
     
     # Handlers untuk user
     application.add_handler(CommandHandler("start", start))
@@ -92,9 +101,30 @@ def main():
     application.add_handler(add_admin_conv)
     application.add_handler(broadcast_conv)
     
+    return application
+
+def run_bot(application):
+    """Run the bot application"""
+    # Handle shutdown gracefully
+    def signal_handler(sig, frame):
+        print("\nShutting down gracefully...")
+        application.stop_running()
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
     # Jalankan bot
     print("🤖 QRIS Payment Bot is running...")
-    application.run_polling()
+    application.run_polling(stop_signals=[])
+
+# For backward compatibility
+def main():
+    """Main function for backward compatibility"""
+    application = setup_bot()
+    run_bot(application)
 
 if __name__ == '__main__':
-    main()
+    # This will be called by run_bot.py
+    application = setup_bot()
+    run_bot(application)

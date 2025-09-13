@@ -1,15 +1,17 @@
 # webhook_server.py
 from flask import Flask, request, jsonify
-from telegram.ext import ApplicationBuilder
-from handlers.webhook import payment_webhook_handler
-from config import TELEGRAM_BOT_TOKEN
+from telegram import Bot
+from telegram.request import HTTPXRequest
 import asyncio
 import threading
+from handlers.webhook import payment_webhook_handler
+from config import TELEGRAM_BOT_TOKEN
 
 app = Flask(__name__)
 
-# Inisialisasi bot application
-application = ApplicationBuilder().token(TELEGRAM_BOT_TOKEN).build()
+# Inisialisasi bot instance with explicit HTTP backend
+request = HTTPXRequest()
+bot = Bot(token=TELEGRAM_BOT_TOKEN, request=request)
 
 @app.route('/webhook/payment', methods=['POST'])
 def payment_notification():
@@ -31,11 +33,24 @@ def payment_notification():
         
         # Jalankan handler notifikasi secara async
         def run_async_handler():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-            loop.run_until_complete(
-                payment_webhook_handler(transaction_id, status, application)
-            )
+            # Create a simple context object with the bot
+            class SimpleContext:
+                def __init__(self, bot_instance):
+                    self.bot = bot_instance
+            
+            context = SimpleContext(bot)
+            
+            # For Python 3.13 compatibility, we need to handle the event loop properly
+            try:
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(
+                    payment_webhook_handler(transaction_id, status, context)
+                )
+            except Exception as e:
+                print(f"Error in async handler: {str(e)}")
+            finally:
+                loop.close()
         
         # Jalankan dalam thread terpisah agar tidak memblokir request
         thread = threading.Thread(target=run_async_handler)

@@ -1,30 +1,37 @@
 # handlers/admin.py
+"""Admin handlers for the QRIS Telegram bot."""
+
 import os
-from telegram import Update
+from telegram import Update, ReplyKeyboardRemove
 from telegram.ext import ContextTypes, ConversationHandler
-from database import add_merchant, get_merchants, add_admin, is_admin, get_user_merchants
+from services.database_service import db_service
 from config import ADMIN_USER_ID
 from utils.qris_reader import read_qris_from_bytes
-from telegram import ReplyKeyboardRemove
+from services.telegram_service import telegram_service
+from services.logging_service import get_logger
 
+logger = get_logger(__name__)
 
 # State definitions
 MERCHANT_USERNAME_INPUT, MERCHANT_NAME_INPUT, MERCHANT_IMAGE_INPUT, MERCHANT_CONFIRMATION = range(4)
 
 async def admin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Menu Admin"""
+    """Admin menu"""
     user_id = update.effective_user.id
+    logger.info(f"User {user_id} accessed admin menu")
     
     # Cek apakah user adalah admin
-    if user_id != ADMIN_USER_ID and not is_admin(user_id):
-        merchants = get_user_merchants(user_id)
+    if user_id != ADMIN_USER_ID and not db_service.is_admin(user_id):
+        merchants = db_service.get_user_merchants(user_id)
         if merchants:
             merchant_list = "\n".join([f"🏪 {m[1]} (ID: {m[0]})" for m in merchants])
             await update.message.reply_text(f"👋 Halo! Berikut adalah merchant Anda:\n\n{merchant_list}\n\nGunakan command /start untuk kembali ke menu utama.")
+            logger.info(f"User {user_id} is not admin but has merchant")
             return
         else:
             await update.message.reply_text("📭 Anda belum memiliki merchant. Hubungi admin untuk setup")
-        return
+            logger.info(f"User {user_id} is not admin and has no merchant")
+            return
     
     admin_text = """
 👑 *ADMIN MENU*
@@ -42,27 +49,32 @@ Gunakan command di atas untuk mengakses fitur admin.
     await update.message.reply_text(admin_text, parse_mode='Markdown')
 
 async def add_merchant_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Mulai tambah merchant"""
+    """Start adding merchant"""
     user_id = update.effective_user.id
+    logger.info(f"User {user_id} started adding merchant")
     
-    if user_id != ADMIN_USER_ID and not is_admin(user_id):
+    if user_id != ADMIN_USER_ID and not db_service.is_admin(user_id):
         await update.message.reply_text("❌ Akses ditolak.")
+        logger.warning(f"User {user_id} denied access to add merchant")
         return ConversationHandler.END
     
-    existing_merchant = get_user_merchants(user_id)
-    if existing_merchant and user_id != ADMIN_USER_ID and not is_admin(user_id):
+    existing_merchant = db_service.get_user_merchants(user_id)
+    if existing_merchant and user_id != ADMIN_USER_ID and not db_service.is_admin(user_id):
         await update.message.reply_text("❌ Anda sudah memiliki merchant. Hubungi admin jika ingin menambahkan merchant baru.")
+        logger.info(f"User {user_id} already has a merchant")
         return ConversationHandler.END
         
     await update.message.reply_text("Masukkan nama merchant:")
     return MERCHANT_NAME_INPUT
 
 async def add_merchant_for_user_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Mulai tambah merchant untuk user lain"""
+    """Start adding merchant for another user"""
     user_id = update.effective_user.id
+    logger.info(f"User {user_id} started adding merchant for another user")
     
-    if user_id != ADMIN_USER_ID and not is_admin(user_id):
+    if user_id != ADMIN_USER_ID and not db_service.is_admin(user_id):
         await update.message.reply_text("❌ Akses ditolak.")
+        logger.warning(f"User {user_id} denied access to add merchant for user")
         return ConversationHandler.END
     
     await update.message.reply_text("Masukkan User ID Telegram user yang akan didaftarkan:")
@@ -70,29 +82,35 @@ async def add_merchant_for_user_start(update: Update, context: ContextTypes.DEFA
 
 
 async def merchant_user_id_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Input User ID user yang akan didapat merchant"""
+    """Handle user ID input for merchant"""
     try:
         target_user_id = int(update.message.text.strip())
         context.user_data['target_user_id'] = target_user_id
+        logger.info(f"User {update.effective_user.id} entered target user ID: {target_user_id}")
         
         # Cek apakah user sudah punya merchant
-        existing_merchant = get_user_merchants(target_user_id)
+        existing_merchant = db_service.get_user_merchants(target_user_id)
         if existing_merchant:
             await update.message.reply_text(f"❌ User ID {target_user_id} sudah memiliki merchant.")
+            logger.info(f"Target user {target_user_id} already has a merchant")
             return ConversationHandler.END
         
         await update.message.reply_text("Masukkan nama merchant untuk user tersebut:")
         return MERCHANT_NAME_INPUT
         
     except ValueError:
+        logger.warning(f"User {update.effective_user.id} entered invalid target user ID: {update.message.text.strip()}")
         await update.message.reply_text("❌ User ID tidak valid. Masukkan angka User ID Telegram:")
         return MERCHANT_USERNAME_INPUT
 
 
 async def merchant_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Input nama merchant"""
+    """Handle merchant name input"""
     name = update.message.text.strip()
+    logger.info(f"User {update.effective_user.id} entered merchant name: {name}")
+    
     if not name:
+        logger.warning(f"User {update.effective_user.id} entered empty merchant name")
         await update.message.reply_text("❌ Nama merchant tidak boleh kosong. Silakan masukkan nama merchant:")
         return MERCHANT_NAME_INPUT
     
@@ -103,10 +121,11 @@ async def merchant_name_input(update: Update, context: ContextTypes.DEFAULT_TYPE
 
 
 async def merchant_image_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Input gambar QRIS merchant"""
+    """Handle merchant QRIS image input"""
     try:
          # Cek apakah pesan mengandung photo
         if not update.message.photo:
+            logger.warning(f"User {update.effective_user.id} did not send a photo")
             await update.message.reply_text("❌ Silakan upload gambar QRIS merchant:")
             return MERCHANT_IMAGE_INPUT
         # Dapatkan file photo
@@ -119,6 +138,7 @@ async def merchant_image_input(update: Update, context: ContextTypes.DEFAULT_TYP
         # Simpan file
         file_path = f"static/qris_images/merchant_{update.effective_user.id}_{photo.file_id}.jpg"
         await file.download_to_drive(file_path)
+        logger.info(f"User {update.effective_user.id} uploaded QRIS image to: {file_path}")
         
         # Baca QRIS dari gambar
         with open(file_path, 'rb') as f:
@@ -131,6 +151,7 @@ async def merchant_image_input(update: Update, context: ContextTypes.DEFAULT_TYP
             # Hapus file yang tidak valid
             if os.path.exists(file_path):
                 os.remove(file_path)
+            logger.warning(f"User {update.effective_user.id} uploaded invalid QRIS image")
             return MERCHANT_IMAGE_INPUT
         
         # Simpan ke context
@@ -151,13 +172,15 @@ Apakah data ini sudah benar? (Ya/Tidak)
         return MERCHANT_CONFIRMATION
         
     except Exception as e:
+        logger.error(f"Error reading QRIS for user {update.effective_user.id}: {e}")
         await update.message.reply_text(f"❌ Gagal membaca QRIS: {str(e)}\n\nSilakan upload gambar QRIS yang jelas.")
         return MERCHANT_IMAGE_INPUT
 
 
 async def merchant_confirmation_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Konfirmasi data merchant"""
+    """Handle merchant confirmation"""
     user_response = update.message.text.strip().lower()
+    logger.info(f"User {update.effective_user.id} confirmed merchant data: {user_response}")
     
     if user_response == 'ya' or user_response == 'y':
         try:
@@ -165,7 +188,7 @@ async def merchant_confirmation_input(update: Update, context: ContextTypes.DEFA
             target_user_id = context.user_data.get('target_user_id', update.effective_user.id)
 
             # Simpan merchant ke database
-            merchant_id = add_merchant(
+            merchant_id = db_service.add_merchant(
                 name=context.user_data['merchant_name'],
                 qris_static=context.user_data['merchant_qris'],
                 owner_telegram_id=target_user_id,
@@ -182,38 +205,44 @@ async def merchant_confirmation_input(update: Update, context: ContextTypes.DEFA
 Merchant siap digunakan untuk generate QRIS dinamis.
 """
             
-            await update.message.reply_text(success_text, reply_markup=ReplyKeyboardRemove())
+            await update.message.reply_text(success_text, reply_markup=telegram_service.remove_reply_keyboard())
             
             # Bersihkan context
             context.user_data.clear()
             
+            logger.info(f"Merchant added successfully with ID: {merchant_id} for user {target_user_id}")
             return ConversationHandler.END
             
         except Exception as e:
+            logger.error(f"Error saving merchant for user {update.effective_user.id}: {e}")
             await update.message.reply_text(f"❌ Gagal menyimpan merchant: {str(e)}")
             return ConversationHandler.END
             
     elif user_response == 'tidak' or user_response == 't':
+        logger.info(f"User {update.effective_user.id} rejected merchant data")
         await update.message.reply_text("❌ Silakan upload ulang gambar QRIS yang benar.")
         return MERCHANT_IMAGE_INPUT
     else:
+        logger.warning(f"User {update.effective_user.id} entered invalid confirmation: {user_response}")
         await update.message.reply_text("❌ Pilihan tidak valid. Jawab 'Ya' atau 'Tidak'.")
-        return MERCHANT_QRIS_INPUT
-
+        return MERCHANT_CONFIRMATION
 
 
 async def list_merchants(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """List semua merchant"""
+    """List all merchants"""
     user_id = update.effective_user.id
+    logger.info(f"User {user_id} requested merchant list")
     
-    if user_id != ADMIN_USER_ID and not is_admin(user_id):
+    if user_id != ADMIN_USER_ID and not db_service.is_admin(user_id):
         await update.message.reply_text("❌ Akses ditolak.")
+        logger.warning(f"User {user_id} denied access to merchant list")
         return
     
-    merchants = get_merchants()
+    merchants = db_service.get_merchants()
     
     if not merchants:
         await update.message.reply_text("📭 Belum ada merchant yang terdaftar.")
+        logger.info(f"No merchants found for user {user_id}")
         return
     
     merchants_text = "*🏪 DAFTAR MERCHANT*\n\n"
@@ -233,47 +262,57 @@ async def list_merchants(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(merchants_text, parse_mode='Markdown')
 
 async def add_admin_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Tambah admin baru"""
+    """Add new admin"""
     user_id = update.effective_user.id
+    logger.info(f"User {user_id} started adding admin")
     
     if user_id != ADMIN_USER_ID:
         await update.message.reply_text("❌ Hanya super admin yang bisa menambah admin.")
+        logger.warning(f"User {user_id} denied access to add admin")
         return
     
     await update.message.reply_text("Masukkan User ID Telegram admin baru:")
     return 1  # State untuk input user ID
 
 async def admin_user_id_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Input User ID admin baru"""
+    """Handle admin user ID input"""
     try:
         new_admin_id = int(update.message.text.strip())
         username = update.message.from_user.username
+        logger.info(f"User {update.effective_user.id} entered new admin ID: {new_admin_id}")
         
-        if add_admin(new_admin_id, username):
+        if db_service.add_admin(new_admin_id, username):
             await update.message.reply_text(f"✅ User ID {new_admin_id} berhasil ditambahkan sebagai admin.")
+            logger.info(f"Admin {new_admin_id} added successfully")
         else:
             await update.message.reply_text("❌ User ID tersebut sudah menjadi admin.")
+            logger.info(f"User {new_admin_id} is already an admin")
     except ValueError:
+        logger.warning(f"User {update.effective_user.id} entered invalid admin ID: {update.message.text.strip()}")
         await update.message.reply_text("❌ User ID tidak valid.")
     except Exception as e:
+        logger.error(f"Error adding admin {new_admin_id} by user {update.effective_user.id}: {e}")
         await update.message.reply_text(f"❌ Gagal menambahkan admin: {str(e)}")
     
     return ConversationHandler.END
 
 async def broadcast_start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Broadcast pesan ke semua user"""
+    """Broadcast message to all users"""
     user_id = update.effective_user.id
+    logger.info(f"User {user_id} started broadcast")
     
-    if user_id != ADMIN_USER_ID and not is_admin(user_id):
+    if user_id != ADMIN_USER_ID and not db_service.is_admin(user_id):
         await update.message.reply_text("❌ Akses ditolak.")
+        logger.warning(f"User {user_id} denied access to broadcast")
         return
     
     await update.message.reply_text("Masukkan pesan yang akan di-broadcast:")
     return 1  # State untuk input pesan
 
 async def broadcast_message_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Input pesan broadcast"""
+    """Handle broadcast message input"""
     message = update.message.text
+    logger.info(f"User {update.effective_user.id} entered broadcast message: {message}")
     
     # Di sini kamu bisa mengimplementasikan broadcast ke semua user
     # Untuk sementara, kita hanya menampilkan pesan

@@ -1,220 +1,65 @@
 # database.py
-import sqlite3
-import os
-from datetime import datetime
-from config import DATABASE_PATH
+"""Database module - legacy interface for backward compatibility."""
 
-def init_db():
-    """Inisialisasi database"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    
-    # Tabel merchants
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS merchants (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            qris_static TEXT NOT NULL,
-            qris_image_path TEXT,
-            owner_telegram_id INTEGER NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    # Tabel transactions
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS transactions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            chat_id INTEGER NOT NULL,
-            merchant_id INTEGER,
-            amount TEXT NOT NULL,
-            service_fee TEXT DEFAULT '0',
-            qris_dynamic TEXT,
-            status TEXT DEFAULT 'pending',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (merchant_id) REFERENCES merchants (id)
-        )
-    ''')
-    
-    # Tabel admins (untuk multiple admin)
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS admins (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER UNIQUE NOT NULL,
-            username TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
-    conn.commit()
-    conn.close()
+from services.database_service import db_service
 
-def add_merchant(name: str, qris_static: str, owner_telegram_id: int, qris_image_path: str = None):
-    """Tambah merchant baru"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO merchants (name, qris_static, qris_image_path, owner_telegram_id) VALUES (?, ?, ?, ?)
-    ''', (name, qris_static, qris_image_path, owner_telegram_id))
-    merchant_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return merchant_id
+# Legacy functions for backward compatibility
+def init_db() -> None:
+    """Initialize database"""
+    db_service.init_db()
 
+def add_merchant(name: str, qris_static: str, owner_telegram_id: int, qris_image_path: str = None) -> int:
+    """Add a new merchant"""
+    return db_service.add_merchant(name, qris_static, owner_telegram_id, qris_image_path)
 
 def get_merchants():
-    """Dapatkan semua merchant"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM merchants')
-    merchants = cursor.fetchall()
-    conn.close()
-    return merchants
+    """Get all merchants"""
+    return db_service.get_merchants()
 
 def get_merchant_by_id(merchant_id: int):
-    """Dapatkan merchant berdasarkan ID"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM merchants WHERE id = ?', (merchant_id,))
-    merchant = cursor.fetchone()
-    conn.close()
-    return merchant
+    """Get merchant by ID"""
+    return db_service.get_merchant_by_id(merchant_id)
 
 def get_merchant_by_owner(owner_telegram_id: int):
-    """Dapatkan semua merchant milik user"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM merchants WHERE owner_telegram_id = ?', (owner_telegram_id,))
-    merchants = cursor.fetchall()
-    conn.close()
-    return merchants
+    """Get merchant by owner Telegram ID"""
+    return db_service.get_merchant_by_owner(owner_telegram_id)
 
 def get_user_merchants(user_telegram_id: int):
-   """Dapatkan merchant berdasarkan owner Telegram ID"""
-   conn = sqlite3.connect(DATABASE_PATH)
-   cursor = conn.cursor()
-   cursor.execute('SELECT * FROM merchants WHERE owner_telegram_id = ?', (user_telegram_id,))
-   merchant = cursor.fetchone()
-   conn.close()
-   return merchant
+    """Get merchant by owner Telegram ID"""
+    return db_service.get_user_merchants(user_telegram_id)
 
-def get_merchant_by_owner(owner_telegram_id: int):
-    """Dapatkan merchant berdasarkan owner Telegram ID"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM merchants WHERE owner_telegram_id = ?', (owner_telegram_id,))
-    merchant = cursor.fetchone()
-    conn.close()
-    return merchant
+def update_merchant_qris(merchant_id: int, qris_static: str, qris_image_path: str = None) -> None:
+    """Update merchant QRIS"""
+    db_service.update_merchant_qris(merchant_id, qris_static, qris_image_path)
 
-def update_merchant_qris(merchant_id: int, qris_static: str, qris_image_path: str = None):
-    """Update QRIS merchant"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    if qris_image_path:
-        cursor.execute('''
-            UPDATE merchants SET qris_static = ?, qris_image_path = ? WHERE id = ?
-        ''', (qris_static, qris_image_path, merchant_id))
-    else:
-        cursor.execute('''
-            UPDATE merchants SET qris_static = ? WHERE id = ?
-        ''', (qris_static, merchant_id))
-    conn.commit()
-    conn.close()
-
-def add_transaction(user_id: int, chat_id: int, merchant_id: int, amount: str, service_fee: str = "0", qris_dynamic: str = None):
-    """Tambah transaksi baru"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO transactions (user_id, chat_id, merchant_id, amount, service_fee, qris_dynamic)
-        VALUES (?, ?, ?, ?, ?, ?)
-    ''', (user_id, chat_id, merchant_id, amount, service_fee, qris_dynamic))
-    transaction_id = cursor.lastrowid
-    conn.commit()
-    conn.close()
-    return transaction_id
+def add_transaction(user_id: int, chat_id: int, merchant_id: int, amount: str, service_fee: str = "0", qris_dynamic: str = None) -> int:
+    """Add a new transaction"""
+    return db_service.add_transaction(user_id, chat_id, merchant_id, amount, service_fee, qris_dynamic)
 
 def get_user_transactions(user_id: int):
-    """Dapatkan riwayat transaksi user"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT t.*, m.name as merchant_name 
-        FROM transactions t 
-        LEFT JOIN merchants m ON t.merchant_id = m.id 
-        WHERE t.user_id = ? 
-        ORDER BY t.created_at DESC
-    ''', (user_id,))
-    transactions = cursor.fetchall()
-    conn.close()
-    return transactions
+    """Get user transaction history"""
+    return db_service.get_user_transactions(user_id)
 
 def get_transaction_by_id(transaction_id: int):
-    """Dapatkan transaksi berdasarkan ID"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT * FROM transactions WHERE id = ?
-    ''', (transaction_id,))
-    transaction = cursor.fetchone()
-    conn.close()
-    return transaction
+    """Get transaction by ID"""
+    return db_service.get_transaction_by_id(transaction_id)
 
 def get_transaction_with_merchant(transaction_id: int):
-    """Dapatkan transaksi dengan detail merchant"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    cursor.execute('''
-        SELECT t.*, m.name as merchant_name 
-        FROM transactions t 
-        LEFT JOIN merchants m ON t.merchant_id = m.id 
-        WHERE t.id = ?
-    ''', (transaction_id,))
-    transaction = cursor.fetchone()
-    conn.close()
-    return transaction
+    """Get transaction with merchant details"""
+    return db_service.get_transaction_with_merchant(transaction_id)
 
-def update_transaction_status(transaction_id: int, status: str):
-    """Update status transaksi"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    cursor.execute('''
-        UPDATE transactions SET status = ? WHERE id = ?
-    ''', (status, transaction_id))
-    conn.commit()
-    conn.close()
+def update_transaction_status(transaction_id: int, status: str) -> None:
+    """Update transaction status"""
+    db_service.update_transaction_status(transaction_id, status)
 
-def add_admin(user_id: int, username: str = None):
-    """Tambah admin"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    try:
-        cursor.execute('''
-            INSERT INTO admins (user_id, username) VALUES (?, ?)
-        ''', (user_id, username))
-        conn.commit()
-        result = True
-    except sqlite3.IntegrityError:
-        result = False
-    conn.close()
-    return result
+def add_admin(user_id: int, username: str = None) -> bool:
+    """Add admin"""
+    return db_service.add_admin(user_id, username)
 
-def is_admin(user_id: int):
-    """Cek apakah user adalah admin"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    cursor.execute('SELECT id FROM admins WHERE user_id = ?', (user_id,))
-    result = cursor.fetchone() is not None
-    conn.close()
-    return result
+def is_admin(user_id: int) -> bool:
+    """Check if user is admin"""
+    return db_service.is_admin(user_id)
 
 def get_default_merchant():
-    """Dapatkan merchant pertama sebagai default"""
-    conn = sqlite3.connect(DATABASE_PATH)
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM merchants LIMIT 1')
-    merchant = cursor.fetchone()
-    conn.close()
-    return merchant
+    """Get the first merchant as default"""
+    return db_service.get_default_merchant()

@@ -6,7 +6,8 @@ A Telegram bot for generating dynamic QRIS (Quick Response Code Indonesian Stand
 
 ### User Features
 - 🏦 **Generate QRIS**: Create dynamic QRIS codes with custom amounts and service fees
-- 📋 **Transaction History**: View all your past transactions
+- 📋 **Transaction History**: View all your past transactions with date filtering
+- 📊 **Transaction Statistics**: View transaction summaries and analytics
 - 🔔 **Payment Notifications**: Receive instant notifications when payments are processed
 - ℹ️ **Help**: Get assistance with using the bot
 
@@ -73,6 +74,19 @@ A Telegram bot for generating dynamic QRIS (Quick Response Code Indonesian Stand
      3. Receive a dynamic QRIS code with your specified amount
    - **Riwayat Transaksi**: View your transaction history
    - **Bantuan**: Get help with using the bot
+
+### Transaction History Commands
+
+- `/riwayat_transaksi` - View today's transactions
+- `/riwayat_transaksi YYYY-MM-DD` - View transactions for a specific date
+- Example: `/riwayat_transaksi 2025-09-12`
+
+### Transaction Statistics
+
+- `/statistik_transaksi` - View transaction statistics including:
+  - Total transactions
+  - Total amounts and service fees
+  - Transaction status breakdown (successful, pending, failed)
 
 ### For Admins
 
@@ -169,7 +183,7 @@ For detailed instructions on integrating with payment gateways, see [PAYMENT_INT
 
 2. **Transaction Tracking**:
    - All transactions are stored in a SQLite database
-   - Users can view their transaction history
+   - Users can view their transaction history with date filtering
    - Admins can monitor all transactions
 
 3. **Payment Notifications**:
